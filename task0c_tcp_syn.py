@@ -88,11 +88,11 @@ def prepare_tcp_packet(src_addr, dst_addr, src_mac, dest_mac):
     calc_cksm = int("0x" + calc_cksm[2:] + calc_cksm[0:2], 0)
     tcp_hdr = struct.pack("!HHLLBBHHH", src_port, dst_port, seq_num, ack_num, data_offset_padding, flags, rx_window, calc_cksm, urgent)
 
-    print("tcp_cksm ", calc_cksm, hex(calc_cksm))
+    #print("tcp_cksm ", calc_cksm, hex(calc_cksm))
 
     pkt = eth_hdr + ipv4_hdr + tcp_hdr  + opt_hdr
 
-    print(binascii.hexlify(pkt))
+    #print(binascii.hexlify(pkt))
     return pkt
 
 
@@ -102,7 +102,7 @@ def send_packet(sock, pkt):
 if __name__ == "__main__":
 
     destination_host_list = [
-        ("10.0.3.20", "00:00:00:aa:00:0a")
+        ("10.0.1.20", "00:00:00:aa:00:03")
     ]
     
     
@@ -112,9 +112,15 @@ if __name__ == "__main__":
     sock = setup_connection()
     
     for host in destination_host_list:
-        print(host)
+        #print(host)
         dst_addr, dest_mac = host     
         pkt = prepare_tcp_packet(src_addr, dst_addr, src_mac, dest_mac)
+        
+        # pkt = "000000aa0001000000aa000008004500003c801d40004006a5770a0000140a000114eaf83996fb090c3300000000a002faf0d9720000020405b40402080a4627ec810000000001030307"
+        # pkt = bytes.fromhex(pkt)
+        # print(pkt)
+        
         send_packet(sock, pkt)
     
     sock.close()    
+

