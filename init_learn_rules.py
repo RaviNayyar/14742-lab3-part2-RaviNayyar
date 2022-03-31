@@ -73,12 +73,6 @@ class InitLearnRules(app_manager.RyuApp):
                 },  
         }
                 
-        # mapping from port number to connected ethernet and IP addresses, i.e., ARP table for each datapath
-        # port_addrs{datapath} ==> {1: {'eth': [e1, e2,...], 'ip': [ip1, ip2,,...]}, 2: {}}
-        #self.sw_addrs = {1: {'eth': '00:00:00:aa:00:00', 'ip': '10.0.0.1'}, 2: {'eth': '00:00:00:aa:00:02', 'ip': '10.0.1.1'}}
-        #use dpid as the main key, 
-        #self.sw_addrs = {1: {'eth': '00:00:00:aa:00:00', 'ip': '10.0.0.1'}, 2: {'eth': '00:00:00:aa:00:0c', 'ip': '10.0.4.1'}, 3: {'eth': '00:00:00:aa:00:10', 'ip': '10.0.6.1'}, 5: {'eth': '00:00:00:aa:00:01', 'ip': '10.0.1.1'}, 6: {'eth': '00:00:00:aa:00:0d', 'ip': '10.0.4.2'}, 7: {'eth': '00:00:00:aa:00:12', 'ip': '10.0.7.1'}, 9: {'eth': '00:00:00:aa:00:02', 'ip': '10.0.2.1'}, 10: {'eth': '00:00:00:aa:00:0e', 'ip': '10.0.5.1'}, 11: {'eth': '00:00:00:aa:00:11', 'ip': '10.0.6.2'}, 13: {'eth': '00:00:00:aa:00:03', 'ip': '10.0.3.1'}, 14: {'eth': '00:00:00:aa:00:0f', 'ip': '10.0.5.2'}, 15: {'eth': '00:00:00:aa:00:13', 'ip': '10.0.7.2'}}
-        
         self.sw_addrs = {11141120: {1: {'eth': '00:00:00:aa:00:00', 'ip': '10.0.0.1'}, 2: {'eth': '00:00:00:aa:00:0c', 'ip': '10.0.4.1'}, 3:  {'eth': '00:00:00:aa:00:10', 'ip': '10.0.6.1'}},
                          11141121: {1: {'eth': '00:00:00:aa:00:01', 'ip': '10.0.1.1'}, 2: {'eth': '00:00:00:aa:00:0d', 'ip': '10.0.4.2'}, 3:  {'eth': '00:00:00:aa:00:12', 'ip': '10.0.7.1'}},       
                          11141122: {1: {'eth': '00:00:00:aa:00:02', 'ip': '10.0.2.1'}, 2: {'eth': '00:00:00:aa:00:0e', 'ip': '10.0.5.1'}, 3: {'eth': '00:00:00:aa:00:11', 'ip' : '10.0.6.2'}},
@@ -88,21 +82,44 @@ class InitLearnRules(app_manager.RyuApp):
         
         self.pkt_time_interval = 2
         self.pkt_threshold = self.pkt_time_interval * 5
-        self.tcp_packet_count = 0
+        
+        self.syn_flood  = False
+        self.icmp_flood = False
 
-    
-    def write_to_logfile(self, packet_type="", dpid="", src_mac="", src_ip="", dst_mac="", dst_ip="", comment=""):
-        print("WRITING TO THE LOG FILE ", log_file_path)
+
+    def attack_detected(self, msg):
+        print("ATTACK DETECTED: " + msg+"\n")
+        return
+
+
+    def write_to_logfile(self, packet_type="", dpid="", src_mac="", src_ip="", dst_mac="", dst_ip="", comment="", attack="", p2c=False):
         if not exists(log_file_path):
             csv_header = "date_time, packet_type, dpid, src_mac, src_ip, dst_mac, dst_ip, comment\n"
             f = open(log_file_path, "w")
             f.write(csv_header)
             f.close()
-        else:
+            return
+        
+        message = "{}, {}, {}, {}, {}, {}, {}, {}\n".format(datetime.now(), packet_type, dpid, src_mac, src_ip, dst_mac, dst_ip, comment)
+        if p2c:
+            print(message)
+        
+        if attack != "":
             f = open(log_file_path, "a")
-            message = "{}, {}, {}, {}, {}, {}, {}, {}\n".format(datetime.now(), packet_type, dpid, src_mac, src_ip, dst_mac, dst_ip, comment)
+            attk = "ATTACK DETECTED: " + attack + "\n" + "Starting rate limiting\n"
+            f.write("="*50 + "\n")
+            f.write(attk)
             f.write(message)
-            f.close()
+            f.write("="*50 + "\n")
+            f.close()      
+            return
+
+        f = open(log_file_path, "a")
+        
+        
+
+        f.write(message)
+        f.close()
 
 
     def convert_ip_to_subnet(self, curr_ip):
@@ -133,7 +150,6 @@ class InitLearnRules(app_manager.RyuApp):
         
         pkt_eth = pkt.get_protocol(ethernet.ethernet)
         if not pkt_eth:
-            print("Not pkt_eth")
             return
 
         if dp.id not in self.port_addrs:
@@ -141,7 +157,6 @@ class InitLearnRules(app_manager.RyuApp):
 
         pkt_arp = pkt.get_protocol(arp.arp)
         if pkt_arp:
-            print("ARP_IN")
             self._arp_in(dp, inp, pkt_eth, pkt_arp)
             return
 
@@ -157,7 +172,6 @@ class InitLearnRules(app_manager.RyuApp):
             pass
 
         if pkt_icmp:
-            print("ICMP IN")
             self._icmp_in(dp, inp, pkt_eth, pkt_ipv4, pkt_icmp)
             return
         
@@ -190,8 +204,6 @@ class InitLearnRules(app_manager.RyuApp):
 
 
     def _icmp_in(self, dp, inp, pkt_eth, pkt_ipv4, pkt_icmp):
-        print("ICMP Packet Detected")
-
         comment = ""
         if pkt_icmp.type != icmp.ICMP_ECHO_REQUEST and pkt_icmp.type != icmp.ICMP_ECHO_REPLY:
             return
@@ -225,9 +237,6 @@ class InitLearnRules(app_manager.RyuApp):
                                                   data=pkt_icmp.data))
             
             self.write_to_logfile("ICMP", dpid, pkt_eth.dst, pkt_ipv4.src, pkt_eth.src, pkt_ipv4.dst, comment="Switch is pinging itself") 
-            
-
-            print(controller_statistics)
 
             self._pkt_out(dp, inp, pkt_icmp_reply)
 
@@ -253,16 +262,12 @@ class InitLearnRules(app_manager.RyuApp):
                     outp = port  
                 if port_subnet == icmp_subnet:
                     outp = port
-                    #print("\t\t\tWe are breaking with port: ", port)
                     comment = "Packet has reached its destination"
                     break
                        
             if outp == 0:
-                print("outp: 0; return")
                 outp = 3
             
-            print("\n\n SENDING THE PACKET \n")
-
             dpid = dp.id
             pkt_icmp_fwd = packet.Packet()
             dmac = 'ff:ff:ff:ff:ff:ff'
@@ -287,11 +292,8 @@ class InitLearnRules(app_manager.RyuApp):
             adj = 0 # adjusts which feilds in the controller stats gets adjusted
             if pkt_icmp.type == icmp.ICMP_ECHO_REQUEST:
                 pkt_type = "ICMP ECHO REQUEST"   
-                print(pkt_type)
             elif pkt_icmp.type == icmp.ICMP_ECHO_REPLY:
-
                 pkt_type = "ICMP ECHO REPLY  "
-                print(pkt_type)
                 adj = 4
             
             # Adding statistics to the controller data structrue
@@ -299,25 +301,18 @@ class InitLearnRules(app_manager.RyuApp):
             icmp_data = controller_statistics[idx]["icmp"]
             if icmp_data[0+adj] != None:
                 # Checking to see if the interval has elapsed
-                if ((datetime.now()-icmp_data[0+adj]).seconds > self.pkt_time_interval):
-                    print("\n\n", "*"*10, "THE INTERVAL HAS ELAPSED","*"*10, "\n\n")
-                    for x in controller_statistics:
-                        print(connection_list[x], "\n")
-                        c_stat = controller_statistics[x]
-                        print("\t REQ", c_stat["icmp"][0], c_stat["icmp"][1], end="\t")
-                        print("\t RTL", c_stat["icmp"][2], c_stat["icmp"][3])
-                        print("\t RES", c_stat["icmp"][4], c_stat["icmp"][5], end="\t")
-                        print("\t RTL", c_stat["icmp"][6], c_stat["icmp"][7])
+                if ((datetime.now()-icmp_data[0+adj]).seconds > self.pkt_time_interval):                        
                     # Check if the ICMP pkt threshold has been breached
                     if icmp_data[1+adj] > self.pkt_threshold:
-                        self.attack_detected()
-
+                        if not self.icmp_flood:
+                            self.attack_detected("ICMP FLood Attack Detected")
+                            self.write_to_logfile(pkt_type, dpid, pkt_eth.dst, pkt_ipv4.src, pkt_eth.src, pkt_ipv4.dst, comment, attack="ICMP FLood Attack Detected", p2c=True) 
+                            self.icmp_flood = True
                         # Setting rate limiting to `True 
                         icmp_data[2+adj] = datetime.now() 
                         icmp_data[3+adj] = True 
 
                     # Resetting values for a new interval
-                    print("RESETTING VALUES FOR A NEW INTERVAL")
                     icmp_data[0+adj] = datetime.now()
                     icmp_data[1+adj] = 1
                 
@@ -335,9 +330,10 @@ class InitLearnRules(app_manager.RyuApp):
             if icmp_data[3+adj] ==  True: 
                 if ((datetime.now() - icmp_data[2+adj]).seconds <= 2):
                     if icmp_data[1+adj] > 2:
-                        #return
-                        pass
-                    self.write_to_logfile(pkt_type, dpid, pkt_eth.dst, pkt_ipv4.src, pkt_eth.src, pkt_ipv4.dst, comment) 
+                        self.write_to_logfile(pkt_type, dpid, pkt_eth.dst, pkt_ipv4.src, pkt_eth.src, pkt_ipv4.dst, comment= "Dropped During Rate Limiting") 
+                        return
+
+                    self.write_to_logfile(pkt_type, dpid, pkt_eth.dst, pkt_ipv4.src, pkt_eth.src, pkt_ipv4.dst, comment= "Sent During Rate Limiting") 
                     self._pkt_out(dp, outp, pkt_icmp_fwd)
 
                     return
@@ -348,21 +344,14 @@ class InitLearnRules(app_manager.RyuApp):
             
             self.write_to_logfile(pkt_type, dpid, pkt_eth.dst, pkt_ipv4.src, pkt_eth.src, pkt_ipv4.dst, comment) 
             self._pkt_out(dp, outp, pkt_icmp_fwd)
-            
+            self.icmp_flood = False
             return
     
     '''Citations
     https://ryu.readthedocs.io/en/latest/library_packet_ref/packet_tcp.html
     
     '''
-
-
-    def attack_detected(self):
-        print("An Attack Was Detected")
-
     def _tcp_in(self, pkt, dp, inp, pkt_eth, pkt_ipv4, pkt_tcp):
-        print("\n\nTCP PACKET DETECTED!")      
-        self.tcp_packet_count += 1  
         comment = ""
         # keep track of mac/ip pair
         dpid = dp.id
@@ -379,13 +368,7 @@ class InitLearnRules(app_manager.RyuApp):
         tcp_subnet = self.convert_ip_to_subnet(pkt_ipv4.dst)
         sw_subnet = self.convert_ip_to_subnet(dpid_dict[inp]['ip'])
         
-        print("Source IP: ", pkt_ipv4.src, end ="\t")
-        print("Destination IP: ", pkt_ipv4.dst)
-        print("Subnet: {}".format(tcp_subnet), end = "")
-        print("DPID: ", dpid, "\t sw_subnet", sw_subnet)
-
         if self.convert_ip_to_subnet(pkt_ipv4.src) not in self.whitelist:
-            print("Packet is being dropped!")
             return
 
         if tcp_subnet != sw_subnet:
@@ -402,6 +385,7 @@ class InitLearnRules(app_manager.RyuApp):
                 if port_subnet in routes:
                     outp = port  
                 if port_subnet == tcp_subnet:
+                    comment = "Packet has reached its destination"
                     outp = port
                     break
                         
@@ -437,24 +421,17 @@ class InitLearnRules(app_manager.RyuApp):
             if tcp_data[0] != None:
                 # Checking to see if the interval has elapsed
                 if ((datetime.now()-tcp_data[0]).seconds > self.pkt_time_interval):
-                    print("\n\n", "*"*10, "THE INTERVAL HAS ELAPSED","*"*10, "\n\n")
-                    print("TCP PAKCET COUNT: ", self.tcp_packet_count)
-                    self.tcp_packet_count = 0
-                    for x in controller_statistics:
-                        print(connection_list[x], "\n")
-                        c_stat = controller_statistics[x]
-                        print("\t TCP", c_stat["tcp"][0], c_stat["tcp"][1], end="\t")
-                        print("RTL", c_stat["tcp"][2], c_stat["tcp"][3])
                     # Check if the ICMP pkt threshold has been breached
                     if tcp_data[1] > self.pkt_threshold:
-                        self.attack_detected()
-
+                        if not self.syn_flood:
+                            self.attack_detected("TCP SYN Flood Detected")
+                            self.write_to_logfile("TCP Packet", dpid, pkt_eth.dst, pkt_ipv4.src, pkt_eth.src, pkt_ipv4.dst, comment, attack="TCP SYN Flood Detected", p2c=True) 
+                            self.syn_flood = True
                         # Setting rate limiting to `True 
                         tcp_data[2] = datetime.now() 
                         tcp_data[3] = True 
 
                     # Resetting values for a new interval
-                    print("RESETTING VALUES FOR A NEW INTERVAL")
                     tcp_data[0] = datetime.now()
                     tcp_data[1] = 1
                 
@@ -472,10 +449,10 @@ class InitLearnRules(app_manager.RyuApp):
             if tcp_data[3] ==  True: 
                 if ((datetime.now() - tcp_data[2]).seconds <= 2):
                     if tcp_data[1] > 2:
-                        #print("\n\n\n\n\nWE ARE DROPPING PACKETS\n\n\n\n\n")
+                        self.write_to_logfile("TCP Packet", dpid, pkt_eth.dst, pkt_ipv4.src, pkt_eth.src, pkt_ipv4.dst, comment= "Dropped During Rate Limiting") 
                         return
                         
-                    self.write_to_logfile("TCP Packet", dpid, pkt_eth.dst, pkt_ipv4.src, pkt_eth.src, pkt_ipv4.dst, comment) 
+                    self.write_to_logfile("TCP Packet", dpid, pkt_eth.dst, pkt_ipv4.src, pkt_eth.src, pkt_ipv4.dst, comment = "Sent During Rate Limiting") 
                     self._pkt_out(dp, outp, pkt_tcp_fwd)
 
                     return
@@ -486,6 +463,8 @@ class InitLearnRules(app_manager.RyuApp):
             
             self.write_to_logfile("TCP Packet", dpid, pkt_eth.dst, pkt_ipv4.src, pkt_eth.src, pkt_ipv4.dst, comment) 
             self._pkt_out(dp, outp, pkt_tcp_fwd)
+            self.syn_flood = False
+            comment = ""
             return
 
 

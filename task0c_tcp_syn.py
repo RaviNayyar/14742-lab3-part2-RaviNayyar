@@ -116,10 +116,6 @@ if __name__ == "__main__":
         dst_addr, dest_mac = host     
         pkt = prepare_tcp_packet(src_addr, dst_addr, src_mac, dest_mac)
         
-        # pkt = "000000aa0001000000aa000008004500003c801d40004006a5770a0000140a000114eaf83996fb090c3300000000a002faf0d9720000020405b40402080a4627ec810000000001030307"
-        # pkt = bytes.fromhex(pkt)
-        # print(pkt)
-        
         send_packet(sock, pkt)
     
     sock.close()    
